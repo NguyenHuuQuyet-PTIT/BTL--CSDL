@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# SQLite DBs
+*.db
+backend/*.db
+
+# Editor / OS
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Byte-compiled / logs
+*.egg-info/
+*.egg
+dist/
+build/
+
+# Local env files
+.env
+
+# Ignore cache and pip
+pip-log.txt
+htmlcov/
+.npm
+
+# Coverage
+.coverage
+coverage/
+
+# Tests
+pytest_cache/
+
+# Node
+node_modules/
