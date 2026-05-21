@@ -69,7 +69,7 @@ function renderDangNhap() {
         <div class="logo"><span class="logo-dau">${icons.coffee}</span><span>Drink Shop</span></div>
       </div>
       <div class="login-hero">
-        <h1>Quản lý cửa hàng<br>đồ uống thông minh</h1>
+        <h1>Quản lý cửa<br>hàng đồ uống</h1>
         <p>Hệ thống giúp bạn quản lý bán hàng, kho hàng, khách hàng và báo cáo doanh thu một cách dễ dàng.</p>
         <div class="the-tinh-nang">
           <div><b>Bán hàng nhanh</b><span>Giao diện POS đơn giản</span></div>
@@ -78,7 +78,7 @@ function renderDangNhap() {
           <div><b>Báo cáo</b><span>Thống kê doanh thu</span></div>
         </div>
       </div>
-      <p class="copyright">© 2024 Drink Shop Management System</p>
+      <p class="copyright">© Quyet DEV 2026</p>
     </section>
     <section class="dangnhap-phai">
       <form class="hop-dangnhap" id="formDangNhap">

@@ -1,18 +1,13 @@
-// File này chỉ gọi API. Không chứa câu SQL, dữ liệu mẫu, mật khẩu hay xử lý backend.
-// Nếu mở web qua backend ở cổng 8000: gọi API cùng domain.
-// Nếu mở frontend riêng bằng Live Server / python http.server: gọi backend ở 127.0.0.1:8000.
 const DIA_CHI_API = (() => {
   const laHttp = window.location.protocol.startsWith("http");
   const port = window.location.port;
 
   if (!laHttp) return "http://127.0.0.1:8000/api";
 
-  // Các cổng thường dùng khi chạy frontend riêng.
   if (["3000", "5173", "5500", "5501"].includes(port)) {
     return "http://127.0.0.1:8000/api";
   }
 
-  // Khi chạy bằng python chaybackend.py, frontend và backend cùng cổng 8000.
   return window.location.origin + "/api";
 })();
 
