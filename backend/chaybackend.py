@@ -20,9 +20,6 @@ THU_MUC_GIAO_DIEN = THU_MUC_GOC / "frontend"
 THU_MUC_BACKEND = THU_MUC_GOC / "backend"
 
 app = FastAPI(title="Drink shop management backend")
-
-# Khi backend tự phục vụ frontend thì frontend gọi cùng domain, không cần mở CORS rộng.
-# Dòng này để tiện chạy thử nếu sinh viên mở frontend riêng bằng port khác.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:3000", "http://localhost:3000", "http://127.0.0.1:8000", "http://localhost:8000"],
@@ -34,7 +31,7 @@ app.add_middleware(
 @app.on_event("startup")
 def khi_khoi_dong():
     khoi_tao_csdl()
-    # Ghi file SQL tham khảo nếu chưa có.
+    
     duong_dan_sql = THU_MUC_BACKEND / "database.sql"
     if not duong_dan_sql.exists():
         duong_dan_sql.write_text(SCHEMA_SQL, encoding="utf-8")
@@ -45,7 +42,7 @@ def trang_chu():
 
 @app.get("/login")
 def trang_dang_nhap():
-    # Cho phép mở đường dẫn /login giống bản demo Netlify.
+    
     return FileResponse(THU_MUC_GIAO_DIEN / "index.html")
 
 @app.get("/kiemtra")
@@ -64,7 +61,6 @@ def file_api():
 def file_app():
     return FileResponse(THU_MUC_GIAO_DIEN / "app.js", media_type="application/javascript")
 
-# Vẫn giữ đường dẫn /frontend để tiện kiểm tra file tĩnh khi cần.
 app.mount("/frontend", StaticFiles(directory=THU_MUC_GIAO_DIEN), name="frontend")
 
 app.include_router(dangnhap.router)
