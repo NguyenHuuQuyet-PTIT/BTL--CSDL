@@ -31,7 +31,7 @@ Sau khi giải nén project, mở thư mục dự án bằng VS Code hoặc CMD/
 Cấu trúc cần có:
 
 ```txt
-quanlycuahangdouong/
+BTL--CSDL/
 ├── backend/
 ├── frontend/
 ├── gioithieu.md
