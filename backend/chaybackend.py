@@ -1,23 +1,71 @@
 from pathlib import Path
+import sys
+
+ROOT = str(Path(__file__).resolve().parent.parent)
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
+    
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from cosodulieu import khoi_tao_csdl, SCHEMA_SQL
-import dangnhap
-import sanpham
-import khachhang
-import nguyenlieu
-import nhacungcap
-import nhanvien
-import donhang
-import nhaphang
-import baocao
+try:
+    from .middleware_case import CaseMiddleware
+except Exception:
+    from backend.middleware_case import CaseMiddleware
+
+try:
+    from .SQL.cosodulieu import khoi_tao_csdl
+    # Prefer new route package if available, otherwise fall back to top-level modules
+    try:
+        from .routes import dangnhap
+        from .routes import sanpham
+        from .routes import khachhang
+        from .routes import nguyenlieu
+        from .routes import nhacungcap
+        from .routes import nhanvien
+        from .routes import donhang
+        from .routes import nhaphang
+        from .routes import baocao
+    except Exception:
+        from .routes import dangnhap
+        from .routes import sanpham
+        from .routes import khachhang
+        from .routes import nguyenlieu
+        from .routes import nhacungcap
+        from .routes import nhanvien
+        from .routes import donhang
+        from .routes import nhaphang
+        from .routes import baocao
+except ImportError:
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from backend.SQL.cosodulieu import khoi_tao_csdl
+    try:
+        from backend.routes import dangnhap
+        from backend.routes import sanpham
+        from backend.routes import khachhang
+        from backend.routes import nguyenlieu
+        from backend.routes import nhacungcap
+        from backend.routes import nhanvien
+        from backend.routes import donhang
+        from backend.routes import nhaphang
+        from backend.routes import baocao
+    except Exception:
+        from backend.routes import dangnhap
+        from backend.routes import sanpham
+        from backend.routes import khachhang
+        from backend.routes import nguyenlieu
+        from backend.routes import nhacungcap
+        from backend.routes import nhanvien
+        from backend.routes import donhang
+        from backend.routes import nhaphang
+        from backend.routes import baocao
 
 THU_MUC_GOC = Path(__file__).resolve().parent.parent
 THU_MUC_GIAO_DIEN = THU_MUC_GOC / "frontend"
-THU_MUC_BACKEND = THU_MUC_GOC / "backend"
 
 app = FastAPI(title="Drink shop management backend")
 app.add_middleware(
@@ -28,34 +76,38 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.add_middleware(CaseMiddleware)
+
+
 @app.on_event("startup")
 def khi_khoi_dong():
     khoi_tao_csdl()
-    
-    duong_dan_sql = THU_MUC_BACKEND / "database.sql"
-    if not duong_dan_sql.exists():
-        duong_dan_sql.write_text(SCHEMA_SQL, encoding="utf-8")
+
 
 @app.get("/")
 def trang_chu():
     return FileResponse(THU_MUC_GIAO_DIEN / "index.html")
 
+
 @app.get("/login")
 def trang_dang_nhap():
-    
     return FileResponse(THU_MUC_GIAO_DIEN / "index.html")
+
 
 @app.get("/kiemtra")
 def kiem_tra():
     return {"message": "Backend is running", "api": "/docs"}
 
+
 @app.get("/style.css")
 def file_style():
     return FileResponse(THU_MUC_GIAO_DIEN / "style.css", media_type="text/css")
 
+
 @app.get("/api.js")
 def file_api():
     return FileResponse(THU_MUC_GIAO_DIEN / "api.js", media_type="application/javascript")
+
 
 @app.get("/app.js")
 def file_app():
@@ -73,8 +125,10 @@ app.include_router(donhang.router)
 app.include_router(nhaphang.router)
 app.include_router(baocao.router)
 
+
 if __name__ == "__main__":
     import os
     import uvicorn
+
     port = int(os.environ.get("PORT", "8000"))
-    uvicorn.run("chaybackend:app", host="127.0.0.1", port=port, reload=False)
+    uvicorn.run(app, host="127.0.0.1", port=port, reload=False)
