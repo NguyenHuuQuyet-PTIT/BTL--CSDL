@@ -65,7 +65,12 @@ except ImportError:
         from backend.routes import baocao
 
 THU_MUC_GOC = Path(__file__).resolve().parent.parent
-THU_MUC_GIAO_DIEN = THU_MUC_GOC / "frontend"
+# If frontend files were moved into a `src` subfolder, prefer that path.
+candidate_frontend_src = THU_MUC_GOC / "frontend" / "src"
+if candidate_frontend_src.exists():
+    THU_MUC_GIAO_DIEN = candidate_frontend_src
+else:
+    THU_MUC_GIAO_DIEN = THU_MUC_GOC / "frontend"
 
 app = FastAPI(title="Drink shop management backend")
 app.add_middleware(
