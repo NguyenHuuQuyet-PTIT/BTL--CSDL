@@ -65,12 +65,17 @@ except ImportError:
         from backend.routes import baocao
 
 THU_MUC_GOC = Path(__file__).resolve().parent.parent
-# If frontend files were moved into a `src` subfolder, prefer that path.
-candidate_frontend_src = THU_MUC_GOC / "frontend" / "src"
-if candidate_frontend_src.exists():
-    THU_MUC_GIAO_DIEN = candidate_frontend_src
+# Prefer serving from `frontend` if it contains `index.html` (common case).
+# Otherwise, if a `frontend/src` folder exists (user moved JS there), use it.
+frontend_root = THU_MUC_GOC / "frontend"
+if (frontend_root / "index.html").exists():
+    THU_MUC_GIAO_DIEN = frontend_root
 else:
-    THU_MUC_GIAO_DIEN = THU_MUC_GOC / "frontend"
+    candidate_frontend_src = frontend_root / "src"
+    if candidate_frontend_src.exists():
+        THU_MUC_GIAO_DIEN = candidate_frontend_src
+    else:
+        THU_MUC_GIAO_DIEN = frontend_root
 
 app = FastAPI(title="Drink shop management backend")
 app.add_middleware(
@@ -118,7 +123,16 @@ def file_api():
 def file_app():
     return FileResponse(THU_MUC_GIAO_DIEN / "app.js", media_type="application/javascript")
 
-app.mount("/frontend", StaticFiles(directory=THU_MUC_GIAO_DIEN), name="frontend")
+@app.get("/frontend/{path:path}")
+async def frontend_static(path: str):
+    p_root = THU_MUC_GIAO_DIEN / path
+    # If THU_MUC_GIAO_DIEN is frontend root, also check frontend/src
+    p_src = (THU_MUC_GOC / "frontend" / "src" / path)
+    if p_root.exists():
+        return FileResponse(p_root)
+    if p_src.exists():
+        return FileResponse(p_src)
+    return FileResponse(THU_MUC_GIAO_DIEN / path)
 
 app.include_router(dangnhap.router)
 app.include_router(sanpham.router)
