@@ -65,8 +65,6 @@ except ImportError:
         from backend.routes import baocao
 
 THU_MUC_GOC = Path(__file__).resolve().parent.parent
-# Prefer serving from `frontend` if it contains `index.html` (common case).
-# Otherwise, if a `frontend/src` folder exists (user moved JS there), use it.
 frontend_root = THU_MUC_GOC / "frontend"
 if (frontend_root / "index.html").exists():
     THU_MUC_GIAO_DIEN = frontend_root
