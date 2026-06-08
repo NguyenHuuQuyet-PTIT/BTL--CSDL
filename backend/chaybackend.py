@@ -17,7 +17,6 @@ except Exception:
 
 try:
     from .SQL.cosodulieu import khoi_tao_csdl
-    # Prefer new route package if available, otherwise fall back to top-level modules
     try:
         from .routes import dangnhap
         from .routes import sanpham
