@@ -139,6 +139,12 @@ def tao(data: DonHangVao, user: dict = Depends(nguoi_dung_hien_tai)):
              phuong_thuc, tien_khach_dua, tien_thua, data.ghi_chu.strip()),
         )
 
+        ma_tt = tao_ma_moi(conn, "thanh_toan", "ma_tt", "TT")
+        conn.execute(
+            "INSERT INTO thanh_toan(ma_tt, ma_hd, so_tien_khach_dua, so_tien_thoi, hinh_thuc, thoi_diem_thanh_toan) VALUES (?, ?, ?, ?, ?, ?)",
+            (ma_tt, ma_hd, tien_khach_dua, tien_thua, phuong_thuc, thoi_diem),
+        )
+
         for sp, item, don_gia in chi_tiet_luu:
             conn.execute(
                 "INSERT INTO chitietdonhang(ma_hd, ma_sp, ten_sp, so_luong, don_gia, size, ghi_chu) VALUES (?, ?, ?, ?, ?, ?, ?)",

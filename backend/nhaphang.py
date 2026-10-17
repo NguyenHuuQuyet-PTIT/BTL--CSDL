@@ -57,9 +57,10 @@ def tao(data: PhieuNhapVao, user: dict = Depends(chi_quan_ly)):
             (ma_pn, thoi_gian_hien_tai(), data.ma_ncc, ncc["ten_ncc"], user["ma_nv"], user["ten_nv"], tong, data.ghi_chu),
         )
         for nl, item in ds_luu:
+            thanh_tien = int(item.so_luong * item.don_gia)
             conn.execute(
-                "INSERT INTO chitietphieunhap(ma_pn, ma_nl, ten_nl, so_luong, don_gia) VALUES (?, ?, ?, ?, ?)",
-                (ma_pn, nl["ma_nl"], nl["ten_nl"], item.so_luong, item.don_gia),
+                "INSERT INTO chitietphieunhap(ma_pn, ma_nl, ten_nl, so_luong, don_gia, thanh_tien) VALUES (?, ?, ?, ?, ?, ?)",
+                (ma_pn, nl["ma_nl"], nl["ten_nl"], item.so_luong, item.don_gia, thanh_tien),
             )
             # Cập nhật tồn kho và giá nhập trung bình đơn giản.
             ton_cu = float(nl["so_luong_ton"])

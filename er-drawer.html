@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ER Drawer - Tạo và Xuất sơ đồ ER</title>
+  <style>
+    :root{--accent:#0b5ed7;--muted:#6c757d;--panel:#ffffff}
+    html,body{height:100%;margin:0;font-family:Inter,Segoe UI,Helvetica,Arial}
+    body{display:flex;background:#f4f6f8;color:#111}
+    .panel{padding:16px;box-sizing:border-box}
+    .left{width:38%;min-width:360px;border-right:1px solid #e3e7eb;background:linear-gradient(180deg,#fbfdff,#f7fbff)}
+    .right{flex:1;display:flex;flex-direction:column;background:#fff}
+    h3{margin:0 0 8px 0;font-size:16px}
+    textarea{width:100%;height:62vh;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;padding:10px;border:1px solid #dfe7ee;border-radius:6px;box-shadow:0 1px 2px rgba(16,24,40,.04)}
+    .controls{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
+    button{padding:8px 12px;border:0;background:var(--accent);color:white;border-radius:6px;cursor:pointer;font-weight:600}
+    button.secondary{background:var(--muted)}
+    #preview{padding:18px;overflow:auto;flex:1;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,#ffffff,#fbfbfd)}
+    .note{font-size:13px;color:#54626a;margin-top:10px}
+    .toolbar{display:flex;gap:8px;align-items:center}
+    .zoom{display:flex;gap:6px;align-items:center}
+    input[type=range]{width:160px}
+    .svg-wrap{display:inline-block;transform-origin:0 0}
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <div class="panel left">
+    <h3>Form tạo sơ đồ ER</h3>
+    <p class="note">Chỉnh sửa bên dưới rồi nhấn <b>Render</b>. Sử dụng <b>Reset</b> để tải cấu trúc mặc định từ schema.</p>
+    <textarea id="mermaidSrc"></textarea>
+    <div class="controls">
+      <button id="renderBtn">Render</button>
+      <button id="beautifyBtn" class="secondary">Beautify</button>
+      <button id="resetBtn" class="secondary">Reset</button>
+      <button id="downloadSvgBtn" class="secondary">Tải SVG</button>
+      <button id="downloadPngBtn" class="secondary">Tải PNG</button>
+    </div>
+    <div class="note">Zoom: <span id="zoomVal">1.00</span></div>
+    <p class="note">Cách mở file: tốt nhất chạy web server (VS Code Live Server hoặc:</p>
+    <pre class="note">python -m http.server 8000</pre>
+  </div>
+  <div class="panel right">
+    <h3 style="margin:0 0 8px 0">Xem trước</h3>
+    <div id="preview">(Chưa có sơ đồ) </div>
+  </div>
+
+  <script>
+    mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', theme: 'default' });
+
+    const prefill = `graph LR
+    %% Entities as rectangles, attributes as ovals, relationships as diamonds
+    %% Entities
+    NV["NHANVIEN"]
+    KH["KHACHHANG"]
+    NCC["NHACUNGCAP"]
+    NL["NGUYENLIEU"]
+    SP["SANPHAM"]
+    CT["CONGTHUC"]
+    DH["DONHANG"]
+    CTDH["CHITIETDONHANG"]
+    PN["PHIEUNHAP"]
+    CTPN["CHITIETPHIEUNHAP"]
+
+    %% Attributes (ovals)
+    NV_ma(("ma_nv\nPK"))
+    NV_ten(("ten_nv"))
+    NV_vai(("vai_tro"))
+    NV_sdt(("sdt"))
+    NV_user(("username"))
+
+    KH_ma(("ma_kh\nPK"))
+    KH_ten(("ten_kh"))
+    KH_sdt(("sdt"))
+    KH_email(("email"))
+    KH_diem(("diem"))
+    KH_cap(("cap_bac"))
+
+    NCC_ma(("ma_ncc\nPK"))
+    NCC_ten(("ten_ncc"))
+    NCC_sdt(("sdt"))
+
+    NL_ma(("ma_nl\nPK"))
+    NL_ten(("ten_nl"))
+    NL_dv(("don_vi"))
+    NL_ton(("so_luong_ton"))
+
+    SP_ma(("ma_sp\nPK"))
+    SP_ten(("ten_sp"))
+    SP_loai(("loai"))
+    SP_gia(("gia_ban"))
+
+    CT_dinh(("dinh_luong"))
+
+    DH_ma(("ma_hd\nPK"))
+    DH_td(("thoi_diem"))
+    DH_tt(("tong_tien"))
+    DH_trang(("trang_thai"))
+
+    CTDH_id(("id\nPK"))
+    CTDH_masp(("ma_sp"))
+    CTDH_soluong(("so_luong"))
+    CTDH_dongia(("don_gia"))
+
+    PN_ma(("ma_pn\nPK"))
+    PN_ngay(("ngay_nhap"))
+    PN_tong(("tong_tien"))
+
+    CTPN_id(("id\nPK"))
+    CTPN_mal(("ma_nl"))
+    CTPN_soluong(("so_luong"))
+
+    %% Connect attributes to entities
+    NV --> NV_ma
+    NV --> NV_ten
+    NV --> NV_vai
+    NV --> NV_sdt
+    NV --> NV_user
+
+    KH --> KH_ma
+    KH --> KH_ten
+    KH --> KH_sdt
+    KH --> KH_email
+    KH --> KH_diem
+    KH --> KH_cap
+
+    NCC --> NCC_ma
+    NCC --> NCC_ten
+    NCC --> NCC_sdt
+
+    NL --> NL_ma
+    NL --> NL_ten
+    NL --> NL_dv
+    NL --> NL_ton
+
+    SP --> SP_ma
+    SP --> SP_ten
+    SP --> SP_loai
+    SP --> SP_gia
+
+    CT --> CT_dinh
+
+    DH --> DH_ma
+    DH --> DH_td
+    DH --> DH_tt
+    DH --> DH_trang
+
+    CTDH --> CTDH_id
+    CTDH --> CTDH_masp
+    CTDH --> CTDH_soluong
+    CTDH --> CTDH_dongia
+
+    PN --> PN_ma
+    PN --> PN_ngay
+    PN --> PN_tong
+
+    CTPN --> CTPN_id
+    CTPN --> CTPN_mal
+    CTPN --> CTPN_soluong
+
+    %% Relationships as diamonds with cardinality labels
+    R1{"thực hiện"}
+    NV -- "1" --> R1
+    R1 -- "N" --> DH
+
+    R2{"đặt"}
+    KH -- "1" --> R2
+    R2 -- "N" --> DH
+
+    R3{"chứa"}
+    DH -- "1" --> R3
+    R3 -- "N" --> CTDH
+
+    R4{"là"}
+    SP -- "1" --> R4
+    R4 -- "N" --> CTDH
+
+    R5{"cung cấp"}
+    NCC -- "1" --> R5
+    R5 -- "N" --> PN
+
+    R6{"chứa"}
+    PN -- "1" --> R6
+    R6 -- "N" --> CTPN
+
+    R7{"là"}
+    NL -- "1" --> R7
+    R7 -- "N" --> CTPN
+
+    R8{"gồm"}
+    SP -- "1" --> R8
+    R8 -- "N" --> CT
+
+    R9{"sử dụng"}
+    NL -- "1" --> R9
+    R9 -- "N" --> CT
+
+    %% visual hints to keep layout tidy
+    classDef ent fill:#e8f0ff,stroke:#5b8cff,stroke-width:1px;
+    class NV,KH,NCC,NL,SP,CT,DH,CTDH,PN,CTPN ent;
+`;
+
+    const mermaidSrc = document.getElementById('mermaidSrc');
+    const preview = document.getElementById('preview');
+    const renderBtn = document.getElementById('renderBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const downloadSvgBtn = document.getElementById('downloadSvgBtn');
+    const downloadPngBtn = document.getElementById('downloadPngBtn');
+    const beautifyBtn = document.getElementById('beautifyBtn');
+    const zoomVal = document.getElementById('zoomVal');
+
+    // add zoom controls dynamically
+    const zoomWrapper = document.createElement('div'); zoomWrapper.className='toolbar';
+    const zoomLabel = document.createElement('label'); zoomLabel.textContent='Zoom';
+    const zoomRange = document.createElement('input'); zoomRange.type='range'; zoomRange.min='0.4'; zoomRange.max='1.6'; zoomRange.step='0.05'; zoomRange.value='1';
+    zoomWrapper.append(zoomLabel, zoomRange);
+    document.querySelector('.left').appendChild(zoomWrapper);
+
+    mermaidSrc.value = prefill;
+
+    async function renderMermaid(){
+      const src = mermaidSrc.value;
+      preview.innerHTML = '';
+      try{
+        const { svg } = await mermaid.render('theDiagram', src);
+        // wrap svg to allow scaling
+        preview.innerHTML = '<div class="svg-wrap">'+svg+'</div>';
+        applyZoom(currentZoom);
+      }catch(e){
+        preview.innerHTML = '<pre style="color:red">Lỗi khi render:\n'+e.message+'</pre>';
+      }
+    }
+
+    function beautifySource(){
+      // simple prettify: ensure blank lines between entity blocks and relationships
+      let s = mermaidSrc.value;
+      s = s.replace(/^\s+/gm, '');
+      s = s.replace(/\n{2,}/g,'\n\n');
+      // add a trailing newline
+      if(!s.endsWith('\n')) s += '\n';
+      mermaidSrc.value = s;
+    }
+
+    function downloadSVG(){
+      const svgEl = preview.querySelector('svg');
+      if(!svgEl){ alert('Chưa có SVG để tải. Hãy nhấn Render trước.'); return; }
+      const svgData = new XMLSerializer().serializeToString(svgEl);
+      const blob = new Blob([svgData], {type: 'image/svg+xml;charset=utf-8'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'er-diagram.svg'; a.click(); URL.revokeObjectURL(url);
+    }
+
+    function downloadPNG(){
+      const svgEl = preview.querySelector('svg');
+      if(!svgEl){ alert('Chưa có SVG để tải. Hãy nhấn Render trước.'); return; }
+      const svgData = new XMLSerializer().serializeToString(svgEl);
+      const svgBlob = new Blob([svgData], {type: 'image/svg+xml;charset=utf-8'});
+      const url = URL.createObjectURL(svgBlob);
+      const img = new Image();
+      img.onload = function(){
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width; canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,canvas.width,canvas.height);
+        ctx.drawImage(img,0,0);
+        const png = canvas.toDataURL('image/png');
+        const a = document.createElement('a'); a.href = png; a.download = 'er-diagram.png'; a.click();
+        URL.revokeObjectURL(url);
+      };
+      img.onerror = function(){ alert('Không thể chuyển SVG sang PNG trên trình duyệt này. Hãy mở bằng Live Server.'); };
+      img.src = url;
+    }
+
+    // Zoom handling
+    let currentZoom = 1;
+    function applyZoom(z){
+      const wrap = preview.querySelector('.svg-wrap');
+      if(!wrap) return;
+      currentZoom = Number(z);
+      wrap.style.transform = `scale(${currentZoom})`;
+      zoomVal.textContent = currentZoom.toFixed(2);
+    }
+
+    zoomRange.addEventListener('input', (e)=> applyZoom(e.target.value));
+    beautifyBtn.addEventListener('click', ()=>{ beautifySource(); renderMermaid(); });
+
+    renderBtn.addEventListener('click', renderMermaid);
+    resetBtn.addEventListener('click', ()=>{ mermaidSrc.value = prefill; renderMermaid(); });
+    downloadSvgBtn.addEventListener('click', downloadSVG);
+    downloadPngBtn.addEventListener('click', downloadPNG);
+
+    // auto render on load
+    window.addEventListener('load', ()=>{ renderMermaid(); });
+  </script>
+</body>
+</html>

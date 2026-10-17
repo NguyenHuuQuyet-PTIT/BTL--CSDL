@@ -1,8 +1,10 @@
 import hashlib
-import sqlite3
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
+
+import mysql.connector
 
 try:
     from zoneinfo import ZoneInfo
@@ -10,11 +12,87 @@ except Exception:
     ZoneInfo = None
 
 THU_MUC_BACKEND = Path(__file__).resolve().parent
-DUONG_DAN_DB = THU_MUC_BACKEND / "cuahangdouong.db"
+MYSQL_HOST = os.getenv("MYSQL_HOST", "127.0.0.1")
+MYSQL_PORT = int(os.getenv("MYSQL_PORT", "3306"))
+MYSQL_USER = os.getenv("MYSQL_USER", "root")
+MYSQL_PASSWORD = os.getenv("MYSQL_PASSWORD", "")
+MYSQL_DATABASE = os.getenv("MYSQL_DATABASE", "cuahangdouong")
+
+
+def _chuyen_tham_so(sql: str) -> str:
+    return sql.replace("?", "%s") if "?" in sql else sql
+
+
+class MySQLCursorProxy:
+    def __init__(self, cursor):
+        self._cursor = cursor
+
+    def execute(self, sql: str, tham_so: Iterable[Any] = ()):
+        self._cursor.execute(_chuyen_tham_so(sql), tuple(tham_so))
+        return self
+
+    def executemany(self, sql: str, danh_sach_tham_so: Iterable[Iterable[Any]]):
+        self._cursor.executemany(_chuyen_tham_so(sql), list(danh_sach_tham_so))
+        return self
+
+    def executescript(self, chuoi_sql: str):
+        for cau_lenh in chuoi_sql.split(";"):
+            cau_lenh = cau_lenh.strip()
+            if cau_lenh:
+                self._cursor.execute(cau_lenh)
+        return self
+
+    def fetchone(self):
+        return self._cursor.fetchone()
+
+    def fetchall(self):
+        return self._cursor.fetchall()
+
+    def close(self):
+        self._cursor.close()
+
+    @property
+    def lastrowid(self):
+        return self._cursor.lastrowid
+
+    def __iter__(self):
+        return iter(self._cursor)
+
+    def __getattr__(self, name: str):
+        return getattr(self._cursor, name)
+
+
+class MySQLConnectionProxy:
+    def __init__(self, connection):
+        self._connection = connection
+
+    def cursor(self):
+        return MySQLCursorProxy(self._connection.cursor(dictionary=True, buffered=True))
+
+    def execute(self, sql: str, tham_so: Iterable[Any] = ()):
+        cursor = self.cursor()
+        cursor.execute(sql, tham_so)
+        return cursor
+
+    def executemany(self, sql: str, danh_sach_tham_so: Iterable[Iterable[Any]]):
+        cursor = self.cursor()
+        cursor.executemany(sql, danh_sach_tham_so)
+        return cursor
+
+    def commit(self):
+        self._connection.commit()
+
+    def rollback(self):
+        self._connection.rollback()
+
+    def close(self):
+        self._connection.close()
+
+    def __getattr__(self, name: str):
+        return getattr(self._connection, name)
 
 
 def thoi_gian_hien_tai() -> str:
-    """Thời gian thực theo múi giờ Việt Nam, dùng chung cho đơn hàng, nhập hàng và báo cáo."""
     if ZoneInfo:
         return datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).strftime("%Y-%m-%d %H:%M:%S")
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -34,13 +112,20 @@ def bam_mat_khau(mat_khau: str) -> str:
 
 
 def ket_noi():
-    conn = sqlite3.connect(DUONG_DAN_DB)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+    conn = mysql.connector.connect(
+        host=MYSQL_HOST,
+        port=MYSQL_PORT,
+        user=MYSQL_USER,
+        password=MYSQL_PASSWORD,
+        database=MYSQL_DATABASE,
+        charset="utf8mb4",
+        use_unicode=True,
+        autocommit=False,
+    )
+    return MySQLConnectionProxy(conn)
 
 
-def lay_tat_ca(sql: str, tham_so: Iterable[Any] = ()): 
+def lay_tat_ca(sql: str, tham_so: Iterable[Any] = ()):
     conn = ket_noi()
     try:
         rows = conn.execute(sql, tuple(tham_so)).fetchall()
@@ -49,7 +134,7 @@ def lay_tat_ca(sql: str, tham_so: Iterable[Any] = ()):
         conn.close()
 
 
-def lay_mot(sql: str, tham_so: Iterable[Any] = ()): 
+def lay_mot(sql: str, tham_so: Iterable[Any] = ()):
     conn = ket_noi()
     try:
         row = conn.execute(sql, tuple(tham_so)).fetchone()
@@ -58,7 +143,7 @@ def lay_mot(sql: str, tham_so: Iterable[Any] = ()):
         conn.close()
 
 
-def thuc_thi(sql: str, tham_so: Iterable[Any] = ()): 
+def thuc_thi(sql: str, tham_so: Iterable[Any] = ()):
     conn = ket_noi()
     try:
         cur = conn.execute(sql, tuple(tham_so))
@@ -68,7 +153,7 @@ def thuc_thi(sql: str, tham_so: Iterable[Any] = ()):
         conn.close()
 
 
-def tao_ma_moi(conn: sqlite3.Connection, ten_bang: str, cot_ma: str, tien_to: str) -> str:
+def tao_ma_moi(conn: Any, ten_bang: str, cot_ma: str, tien_to: str) -> str:
     row = conn.execute(
         f"SELECT {cot_ma} AS ma FROM {ten_bang} WHERE {cot_ma} LIKE ? ORDER BY {cot_ma} DESC LIMIT 1",
         (f"{tien_to}%",),
@@ -96,7 +181,7 @@ def phan_tram_giam_theo_cap(cap_bac: str) -> int:
     return {"thuong": 0, "bac": 3, "vang": 5, "vip": 10}.get(cap_bac or "thuong", 0)
 
 
-def cap_nhat_cap_bac_khach(conn: sqlite3.Connection, ma_kh: str):
+def cap_nhat_cap_bac_khach(conn: Any, ma_kh: str):
     row = conn.execute("SELECT diem, tong_chi_tieu FROM khachhang WHERE ma_kh=?", (ma_kh,)).fetchone()
     if not row:
         return
@@ -104,7 +189,7 @@ def cap_nhat_cap_bac_khach(conn: sqlite3.Connection, ma_kh: str):
     conn.execute("UPDATE khachhang SET cap_bac=? WHERE ma_kh=?", (cap_bac, ma_kh))
 
 
-def cap_nhat_trang_thai_nguyen_lieu(conn: sqlite3.Connection, ma_nl: str):
+def cap_nhat_trang_thai_nguyen_lieu(conn: Any, ma_nl: str):
     row = conn.execute("SELECT so_luong_ton, muc_canh_bao FROM nguyenlieu WHERE ma_nl=?", (ma_nl,)).fetchone()
     if not row:
         return
@@ -119,48 +204,59 @@ def cap_nhat_trang_thai_nguyen_lieu(conn: sqlite3.Connection, ma_nl: str):
     conn.execute("UPDATE nguyenlieu SET trang_thai=? WHERE ma_nl=?", (trang_thai, ma_nl))
 
 
-def _cot_da_ton_tai(conn: sqlite3.Connection, ten_bang: str, ten_cot: str) -> bool:
-    return any(row["name"] == ten_cot for row in conn.execute(f"PRAGMA table_info({ten_bang})"))
+def _cot_da_ton_tai(conn: Any, ten_bang: str, ten_cot: str) -> bool:
+    row = conn.execute(
+        """
+        SELECT COUNT(*) AS so_luong
+        FROM information_schema.columns
+        WHERE table_schema = DATABASE()
+          AND table_name = %s
+          AND column_name = %s
+        """,
+        (ten_bang, ten_cot),
+    ).fetchone()
+    return bool(row and int(row["so_luong"]) > 0)
 
 
-def _them_cot_neu_thieu(conn: sqlite3.Connection, ten_bang: str, ten_cot: str, khai_bao: str):
+def _them_cot_neu_thieu(conn: Any, ten_bang: str, ten_cot: str, khai_bao: str):
     if not _cot_da_ton_tai(conn, ten_bang, ten_cot):
         conn.execute(f"ALTER TABLE {ten_bang} ADD COLUMN {ten_cot} {khai_bao}")
 
 
-def _bo_sung_cot_moi(conn: sqlite3.Connection):
+def _bo_sung_cot_moi(conn: Any):
     # Cho phép nâng cấp từ bản cũ mà không cần xóa database.
-    _them_cot_neu_thieu(conn, "khachhang", "email", "TEXT DEFAULT ''")
-    _them_cot_neu_thieu(conn, "khachhang", "dia_chi", "TEXT DEFAULT ''")
-    _them_cot_neu_thieu(conn, "khachhang", "ngay_sinh", "TEXT DEFAULT ''")
-    _them_cot_neu_thieu(conn, "khachhang", "gioi_tinh", "TEXT DEFAULT ''")
-    _them_cot_neu_thieu(conn, "khachhang", "cap_bac", "TEXT NOT NULL DEFAULT 'thuong'")
-    _them_cot_neu_thieu(conn, "khachhang", "tong_chi_tieu", "INTEGER NOT NULL DEFAULT 0")
-    _them_cot_neu_thieu(conn, "khachhang", "so_lan_mua", "INTEGER NOT NULL DEFAULT 0")
-    _them_cot_neu_thieu(conn, "khachhang", "ngay_tao", "TEXT DEFAULT ''")
-    _them_cot_neu_thieu(conn, "khachhang", "lan_mua_cuoi", "TEXT DEFAULT ''")
-    _them_cot_neu_thieu(conn, "khachhang", "trang_thai", "TEXT NOT NULL DEFAULT 'dang_hoat_dong'")
+    _them_cot_neu_thieu(conn, "khachhang", "email", "VARCHAR(100) DEFAULT ''")
+    _them_cot_neu_thieu(conn, "khachhang", "dia_chi", "VARCHAR(255) DEFAULT ''")
+    _them_cot_neu_thieu(conn, "khachhang", "ngay_sinh", "DATE DEFAULT NULL")
+    _them_cot_neu_thieu(conn, "khachhang", "gioi_tinh", "VARCHAR(10) DEFAULT ''")
+    _them_cot_neu_thieu(conn, "khachhang", "cap_bac", "VARCHAR(20) NOT NULL DEFAULT 'thuong'")
+    _them_cot_neu_thieu(conn, "khachhang", "tong_chi_tieu", "INT NOT NULL DEFAULT 0")
+    _them_cot_neu_thieu(conn, "khachhang", "so_lan_mua", "INT NOT NULL DEFAULT 0")
+    _them_cot_neu_thieu(conn, "khachhang", "ngay_tao", "DATETIME DEFAULT NULL")
+    _them_cot_neu_thieu(conn, "khachhang", "lan_mua_cuoi", "DATETIME DEFAULT NULL")
+    _them_cot_neu_thieu(conn, "khachhang", "trang_thai", "VARCHAR(20) NOT NULL DEFAULT 'dang_hoat_dong'")
 
     # Quản lý có thể chỉnh thủ công trạng thái kho hiển thị của sản phẩm:
     # tu_dong = hệ thống tự tính theo công thức + tồn kho; con_hang/sap_het/het_hang = quản lý ép trạng thái.
-    _them_cot_neu_thieu(conn, "sanpham", "trang_thai_kho_chinh_tay", "TEXT NOT NULL DEFAULT 'tu_dong'")
-    _them_cot_neu_thieu(conn, "sanpham", "ghi_chu_kho", "TEXT DEFAULT ''")
+    _them_cot_neu_thieu(conn, "sanpham", "hinh_anh", "VARCHAR(255) DEFAULT ''")
+    _them_cot_neu_thieu(conn, "sanpham", "trang_thai_kho_chinh_tay", "VARCHAR(20) NOT NULL DEFAULT 'tu_dong'")
+    _them_cot_neu_thieu(conn, "sanpham", "ghi_chu_kho", "TEXT")
 
-    _them_cot_neu_thieu(conn, "donhang", "tong_truoc_giam", "INTEGER NOT NULL DEFAULT 0")
-    _them_cot_neu_thieu(conn, "donhang", "giam_gia_cap_bac", "INTEGER NOT NULL DEFAULT 0")
-    _them_cot_neu_thieu(conn, "donhang", "diem_su_dung", "INTEGER NOT NULL DEFAULT 0")
-    _them_cot_neu_thieu(conn, "donhang", "giam_gia_diem", "INTEGER NOT NULL DEFAULT 0")
-    _them_cot_neu_thieu(conn, "donhang", "cap_bac_khach", "TEXT DEFAULT 'thuong'")
-    _them_cot_neu_thieu(conn, "donhang", "phuong_thuc_thanh_toan", "TEXT DEFAULT 'tien_mat'")
-    _them_cot_neu_thieu(conn, "donhang", "tien_khach_dua", "INTEGER NOT NULL DEFAULT 0")
-    _them_cot_neu_thieu(conn, "donhang", "tien_thua", "INTEGER NOT NULL DEFAULT 0")
-    _them_cot_neu_thieu(conn, "donhang", "ghi_chu", "TEXT DEFAULT ''")
+    _them_cot_neu_thieu(conn, "donhang", "tong_truoc_giam", "INT NOT NULL DEFAULT 0")
+    _them_cot_neu_thieu(conn, "donhang", "giam_gia_cap_bac", "INT NOT NULL DEFAULT 0")
+    _them_cot_neu_thieu(conn, "donhang", "diem_su_dung", "INT NOT NULL DEFAULT 0")
+    _them_cot_neu_thieu(conn, "donhang", "giam_gia_diem", "INT NOT NULL DEFAULT 0")
+    _them_cot_neu_thieu(conn, "donhang", "cap_bac_khach", "VARCHAR(20) DEFAULT 'thuong'")
+    _them_cot_neu_thieu(conn, "donhang", "phuong_thuc_thanh_toan", "VARCHAR(20) DEFAULT 'tien_mat'")
+    _them_cot_neu_thieu(conn, "donhang", "tien_khach_dua", "INT NOT NULL DEFAULT 0")
+    _them_cot_neu_thieu(conn, "donhang", "tien_thua", "INT NOT NULL DEFAULT 0")
+    _them_cot_neu_thieu(conn, "donhang", "ghi_chu", "TEXT")
 
     conn.execute("UPDATE donhang SET tong_truoc_giam=tong_tien WHERE tong_truoc_giam=0")
     conn.execute("UPDATE khachhang SET ngay_tao=? WHERE ngay_tao=''", (thoi_gian_hien_tai(),))
 
 
-def _dong_bo_thong_ke_khach(conn: sqlite3.Connection):
+def _dong_bo_thong_ke_khach(conn: Any):
     khach_hang = conn.execute("SELECT ma_kh, diem FROM khachhang").fetchall()
     for kh in khach_hang:
         tk = conn.execute(
@@ -197,134 +293,150 @@ def khoi_tao_csdl():
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS nhanvien (
-    ma_nv TEXT PRIMARY KEY,
-    ten_nv TEXT NOT NULL,
-    vai_tro TEXT NOT NULL CHECK (vai_tro IN ('quan_ly', 'nhan_vien')),
-    sdt TEXT,
-    username TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
-    trang_thai TEXT NOT NULL DEFAULT 'dang_lam'
-);
+    ma_nv VARCHAR(20) PRIMARY KEY,
+    ten_nv VARCHAR(100) NOT NULL,
+    vai_tro ENUM('quan_ly', 'nhan_vien') NOT NULL,
+    sdt VARCHAR(20),
+    username VARCHAR(50) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    trang_thai VARCHAR(20) NOT NULL DEFAULT 'dang_lam'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS khachhang (
-    ma_kh TEXT PRIMARY KEY,
-    ten_kh TEXT NOT NULL,
-    sdt TEXT UNIQUE NOT NULL,
-    email TEXT DEFAULT '',
-    dia_chi TEXT DEFAULT '',
-    ngay_sinh TEXT DEFAULT '',
-    gioi_tinh TEXT DEFAULT '',
-    diem INTEGER NOT NULL DEFAULT 0,
-    cap_bac TEXT NOT NULL DEFAULT 'thuong',
-    tong_chi_tieu INTEGER NOT NULL DEFAULT 0,
-    so_lan_mua INTEGER NOT NULL DEFAULT 0,
-    ngay_tao TEXT DEFAULT '',
-    lan_mua_cuoi TEXT DEFAULT '',
-    trang_thai TEXT NOT NULL DEFAULT 'dang_hoat_dong',
-    ghi_chu TEXT DEFAULT ''
-);
+    ma_kh VARCHAR(20) PRIMARY KEY,
+    ten_kh VARCHAR(100) NOT NULL,
+    sdt VARCHAR(20) UNIQUE NOT NULL,
+    email VARCHAR(100) DEFAULT '',
+    dia_chi VARCHAR(255) DEFAULT '',
+    ngay_sinh DATE DEFAULT NULL,
+    gioi_tinh VARCHAR(10) DEFAULT '',
+    diem INT NOT NULL DEFAULT 0,
+    cap_bac VARCHAR(20) NOT NULL DEFAULT 'thuong',
+    tong_chi_tieu INT NOT NULL DEFAULT 0,
+    so_lan_mua INT NOT NULL DEFAULT 0,
+    ngay_tao DATETIME DEFAULT NULL,
+    lan_mua_cuoi DATETIME DEFAULT NULL,
+    trang_thai VARCHAR(20) NOT NULL DEFAULT 'dang_hoat_dong',
+    ghi_chu TEXT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS nhacungcap (
-    ma_ncc TEXT PRIMARY KEY,
-    ten_ncc TEXT NOT NULL,
-    sdt TEXT,
-    dia_chi TEXT,
-    ghi_chu TEXT DEFAULT ''
-);
+    ma_ncc VARCHAR(20) PRIMARY KEY,
+    ten_ncc VARCHAR(150) NOT NULL,
+    sdt VARCHAR(20),
+    dia_chi VARCHAR(255),
+    ghi_chu TEXT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS nguyenlieu (
-    ma_nl TEXT PRIMARY KEY,
-    ten_nl TEXT NOT NULL,
-    don_vi TEXT NOT NULL,
-    so_luong_ton REAL NOT NULL DEFAULT 0,
-    muc_canh_bao REAL NOT NULL DEFAULT 5,
-    gia_nhap_tb INTEGER NOT NULL DEFAULT 0,
-    trang_thai TEXT NOT NULL DEFAULT 'con_hang'
-);
+    ma_nl VARCHAR(20) PRIMARY KEY,
+    ten_nl VARCHAR(150) NOT NULL,
+    don_vi VARCHAR(20) NOT NULL,
+    so_luong_ton DECIMAL(12,2) NOT NULL DEFAULT 0,
+    muc_canh_bao DECIMAL(12,2) NOT NULL DEFAULT 5,
+    gia_nhap_tb INT NOT NULL DEFAULT 0,
+    trang_thai VARCHAR(20) NOT NULL DEFAULT 'con_hang'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS sanpham (
-    ma_sp TEXT PRIMARY KEY,
-    ten_sp TEXT NOT NULL,
-    loai TEXT NOT NULL,
-    gia_ban INTEGER NOT NULL,
-    trang_thai TEXT NOT NULL DEFAULT 'dang_ban' CHECK (trang_thai IN ('dang_ban', 'ngung_ban')),
-    trang_thai_kho_chinh_tay TEXT NOT NULL DEFAULT 'tu_dong' CHECK (trang_thai_kho_chinh_tay IN ('tu_dong', 'con_hang', 'sap_het', 'het_hang')),
-    ghi_chu_kho TEXT DEFAULT '',
-    mo_ta TEXT DEFAULT ''
-);
+    ma_sp VARCHAR(20) PRIMARY KEY,
+    ten_sp VARCHAR(150) NOT NULL,
+    loai VARCHAR(50) NOT NULL,
+    gia_ban INT NOT NULL,
+    hinh_anh VARCHAR(255) DEFAULT '',
+    trang_thai VARCHAR(20) NOT NULL DEFAULT 'dang_ban',
+    trang_thai_kho_chinh_tay VARCHAR(20) NOT NULL DEFAULT 'tu_dong',
+    ghi_chu_kho TEXT,
+    mo_ta TEXT,
+    CONSTRAINT chk_trang_thai_sanpham CHECK (trang_thai IN ('dang_ban', 'ngung_ban')),
+    CONSTRAINT chk_trang_thai_kho CHECK (trang_thai_kho_chinh_tay IN ('tu_dong', 'con_hang', 'sap_het', 'het_hang'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS congthuc (
-    ma_sp TEXT NOT NULL,
-    ma_nl TEXT NOT NULL,
-    dinh_luong REAL NOT NULL,
+    ma_sp VARCHAR(20) NOT NULL,
+    ma_nl VARCHAR(20) NOT NULL,
+    dinh_luong DECIMAL(12,2) NOT NULL,
     PRIMARY KEY (ma_sp, ma_nl),
-    FOREIGN KEY(ma_sp) REFERENCES sanpham(ma_sp) ON DELETE CASCADE,
-    FOREIGN KEY(ma_nl) REFERENCES nguyenlieu(ma_nl)
-);
+    FOREIGN KEY (ma_sp) REFERENCES sanpham(ma_sp) ON DELETE CASCADE,
+    FOREIGN KEY (ma_nl) REFERENCES nguyenlieu(ma_nl)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS donhang (
-    ma_hd TEXT PRIMARY KEY,
-    thoi_diem TEXT NOT NULL,
-    ma_kh TEXT,
-    ten_kh TEXT NOT NULL,
-    cap_bac_khach TEXT DEFAULT 'thuong',
-    ma_nv TEXT NOT NULL,
-    ten_nv TEXT NOT NULL,
-    tong_truoc_giam INTEGER NOT NULL DEFAULT 0,
-    giam_gia_cap_bac INTEGER NOT NULL DEFAULT 0,
-    diem_su_dung INTEGER NOT NULL DEFAULT 0,
-    giam_gia_diem INTEGER NOT NULL DEFAULT 0,
-    tong_tien INTEGER NOT NULL,
-    diem_cong INTEGER NOT NULL DEFAULT 0,
-    trang_thai TEXT NOT NULL DEFAULT 'da_thanh_toan',
-    phuong_thuc_thanh_toan TEXT DEFAULT 'tien_mat',
-    tien_khach_dua INTEGER NOT NULL DEFAULT 0,
-    tien_thua INTEGER NOT NULL DEFAULT 0,
-    ghi_chu TEXT DEFAULT '',
-    FOREIGN KEY(ma_kh) REFERENCES khachhang(ma_kh),
-    FOREIGN KEY(ma_nv) REFERENCES nhanvien(ma_nv)
-);
+    ma_hd VARCHAR(20) PRIMARY KEY,
+    thoi_diem DATETIME NOT NULL,
+    ma_kh VARCHAR(20),
+    ten_kh VARCHAR(100) NOT NULL,
+    cap_bac_khach VARCHAR(20) DEFAULT 'thuong',
+    ma_nv VARCHAR(20) NOT NULL,
+    ten_nv VARCHAR(100) NOT NULL,
+    tong_truoc_giam INT NOT NULL DEFAULT 0,
+    giam_gia_cap_bac INT NOT NULL DEFAULT 0,
+    diem_su_dung INT NOT NULL DEFAULT 0,
+    giam_gia_diem INT NOT NULL DEFAULT 0,
+    tong_tien INT NOT NULL,
+    diem_cong INT NOT NULL DEFAULT 0,
+    trang_thai VARCHAR(20) NOT NULL DEFAULT 'da_thanh_toan',
+    phuong_thuc_thanh_toan VARCHAR(20) DEFAULT 'tien_mat',
+    tien_khach_dua INT NOT NULL DEFAULT 0,
+    tien_thua INT NOT NULL DEFAULT 0,
+    ghi_chu TEXT,
+    FOREIGN KEY (ma_kh) REFERENCES khachhang(ma_kh),
+    FOREIGN KEY (ma_nv) REFERENCES nhanvien(ma_nv)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS chitietdonhang (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    ma_hd TEXT NOT NULL,
-    ma_sp TEXT NOT NULL,
-    ten_sp TEXT NOT NULL,
-    so_luong INTEGER NOT NULL,
-    don_gia INTEGER NOT NULL,
-    size TEXT NOT NULL DEFAULT 'M',
-    ghi_chu TEXT DEFAULT '',
-    FOREIGN KEY(ma_hd) REFERENCES donhang(ma_hd) ON DELETE CASCADE,
-    FOREIGN KEY(ma_sp) REFERENCES sanpham(ma_sp)
-);
+    id INT AUTO_INCREMENT UNIQUE,
+    ma_hd VARCHAR(20) NOT NULL,
+    ma_sp VARCHAR(20) NOT NULL,
+    ten_sp VARCHAR(150) NOT NULL,
+    so_luong INT NOT NULL,
+    don_gia INT NOT NULL,
+    size VARCHAR(10) NOT NULL DEFAULT 'M',
+    ghi_chu TEXT,
+    PRIMARY KEY (ma_hd, ma_sp),
+    FOREIGN KEY (ma_hd) REFERENCES donhang(ma_hd) ON DELETE CASCADE,
+    FOREIGN KEY (ma_sp) REFERENCES sanpham(ma_sp)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS thanh_toan (
+    ma_tt VARCHAR(20) PRIMARY KEY,
+    ma_hd VARCHAR(20) UNIQUE NOT NULL,
+    so_tien_khach_dua INT NOT NULL DEFAULT 0,
+    so_tien_thoi INT NOT NULL DEFAULT 0,
+    hinh_thuc VARCHAR(20) NOT NULL DEFAULT 'tien_mat',
+    thoi_diem_thanh_toan DATETIME NOT NULL,
+    FOREIGN KEY (ma_hd) REFERENCES donhang(ma_hd) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS phieunhap (
-    ma_pn TEXT PRIMARY KEY,
-    ngay_nhap TEXT NOT NULL,
-    ma_ncc TEXT NOT NULL,
-    ten_ncc TEXT NOT NULL,
-    ma_nv TEXT NOT NULL,
-    ten_nv TEXT NOT NULL,
-    tong_tien INTEGER NOT NULL,
-    ghi_chu TEXT DEFAULT '',
-    FOREIGN KEY(ma_ncc) REFERENCES nhacungcap(ma_ncc),
-    FOREIGN KEY(ma_nv) REFERENCES nhanvien(ma_nv)
-);
+    ma_pn VARCHAR(20) PRIMARY KEY,
+    ngay_nhap DATETIME NOT NULL,
+    ma_ncc VARCHAR(20) NOT NULL,
+    ten_ncc VARCHAR(150) NOT NULL,
+    ma_nv VARCHAR(20) NOT NULL,
+    ten_nv VARCHAR(100) NOT NULL,
+    tong_tien INT NOT NULL,
+    ghi_chu TEXT,
+    FOREIGN KEY (ma_ncc) REFERENCES nhacungcap(ma_ncc),
+    FOREIGN KEY (ma_nv) REFERENCES nhanvien(ma_nv)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS chitietphieunhap (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    ma_pn TEXT NOT NULL,
-    ma_nl TEXT NOT NULL,
-    ten_nl TEXT NOT NULL,
-    so_luong REAL NOT NULL,
-    don_gia INTEGER NOT NULL,
-    FOREIGN KEY(ma_pn) REFERENCES phieunhap(ma_pn) ON DELETE CASCADE,
-    FOREIGN KEY(ma_nl) REFERENCES nguyenlieu(ma_nl)
-);
+    id INT AUTO_INCREMENT UNIQUE,
+    ma_pn VARCHAR(20) NOT NULL,
+    ma_nl VARCHAR(20) NOT NULL,
+    ten_nl VARCHAR(150) NOT NULL,
+    so_luong DECIMAL(12,2) NOT NULL,
+    don_gia INT NOT NULL,
+    thanh_tien INT NOT NULL,
+    PRIMARY KEY (ma_pn, ma_nl),
+    FOREIGN KEY (ma_pn) REFERENCES phieunhap(ma_pn) ON DELETE CASCADE,
+    FOREIGN KEY (ma_nl) REFERENCES nguyenlieu(ma_nl)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 """
 
 
-def them_du_lieu_mau(cur: sqlite3.Cursor):
+def them_du_lieu_mau(cur: Any):
     now = thoi_gian_hien_tai()
     cur.executemany(
         "INSERT OR IGNORE INTO nhanvien(ma_nv, ten_nv, vai_tro, sdt, username, password_hash, trang_thai) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -367,17 +479,17 @@ def them_du_lieu_mau(cur: sqlite3.Cursor):
     )
 
     cur.executemany(
-        "INSERT OR IGNORE INTO sanpham(ma_sp, ten_sp, loai, gia_ban, trang_thai, mo_ta) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT OR IGNORE INTO sanpham(ma_sp, ten_sp, loai, gia_ban, hinh_anh, trang_thai, mo_ta) VALUES (?, ?, ?, ?, ?, ?, ?)",
         [
-            ("SP001", "Cà phê đen", "Cà phê", 25000, "dang_ban", "Đậm vị cà phê"),
-            ("SP002", "Cà phê sữa", "Cà phê", 30000, "dang_ban", "Cà phê pha sữa"),
-            ("SP003", "Bạc xỉu", "Cà phê", 28000, "dang_ban", "Nhiều sữa, nhẹ cà phê"),
-            ("SP004", "Trà sữa trân châu", "Trà sữa", 35000, "dang_ban", "Trà sữa truyền thống"),
-            ("SP005", "Trà sữa matcha", "Trà sữa", 40000, "dang_ban", "Matcha thơm béo"),
-            ("SP006", "Trà sữa socola", "Trà sữa", 38000, "dang_ban", "Socola béo mịn"),
-            ("SP007", "Sinh tố dâu", "Sinh tố", 35000, "dang_ban", "Dâu tươi xay"),
-            ("SP008", "Sinh tố bơ", "Sinh tố", 40000, "dang_ban", "Bơ chín xay mịn"),
-            ("SP009", "Nước ép cam", "Nước ép", 30000, "dang_ban", "Cam tươi nguyên chất"),
+            ("SP001", "Cà phê đen", "Cà phê", 25000, "", "dang_ban", "Đậm vị cà phê"),
+            ("SP002", "Cà phê sữa", "Cà phê", 30000, "", "dang_ban", "Cà phê pha sữa"),
+            ("SP003", "Bạc xỉu", "Cà phê", 28000, "", "dang_ban", "Nhiều sữa, nhẹ cà phê"),
+            ("SP004", "Trà sữa trân châu", "Trà sữa", 35000, "", "dang_ban", "Trà sữa truyền thống"),
+            ("SP005", "Trà sữa matcha", "Trà sữa", 40000, "", "dang_ban", "Matcha thơm béo"),
+            ("SP006", "Trà sữa socola", "Trà sữa", 38000, "", "dang_ban", "Socola béo mịn"),
+            ("SP007", "Sinh tố dâu", "Sinh tố", 35000, "", "dang_ban", "Dâu tươi xay"),
+            ("SP008", "Sinh tố bơ", "Sinh tố", 40000, "", "dang_ban", "Bơ chín xay mịn"),
+            ("SP009", "Nước ép cam", "Nước ép", 30000, "", "dang_ban", "Cam tươi nguyên chất"),
         ],
     )
 
@@ -414,6 +526,14 @@ def them_du_lieu_mau(cur: sqlite3.Cursor):
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         ("HD003", now, None, "Khách lẻ", "thuong", "NV001", "Nguyễn Hữu Quyết", 22500, 0, 0, 0, 22500, 0, "da_thanh_toan", "tien_mat", 22500, 0, "Đơn mẫu 3"),
+    )
+    cur.executemany(
+        "INSERT OR IGNORE INTO thanh_toan(ma_tt, ma_hd, so_tien_khach_dua, so_tien_thoi, hinh_thuc, thoi_diem_thanh_toan) VALUES (?, ?, ?, ?, ?, ?)",
+        [
+            ("TT001", "HD001", 100000, 7850, "tien_mat", now),
+            ("TT002", "HD002", 80000, 0, "chuyen_khoan", now),
+            ("TT003", "HD003", 22500, 0, "tien_mat", now),
+        ],
     )
     cur.executemany(
         "INSERT INTO chitietdonhang(ma_hd, ma_sp, ten_sp, so_luong, don_gia, size, ghi_chu) VALUES (?, ?, ?, ?, ?, ?, ?)",

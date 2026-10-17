@@ -26,6 +26,7 @@ class SanPhamVao(BaseModel):
     ten_sp: str
     loai: str
     gia_ban: int = Field(gt=0)
+    hinh_anh: str = ""
     trang_thai: str = "dang_ban"
     # tu_dong: hệ thống tự tính theo kho; con_hang/sap_het/het_hang: quản lý chỉnh thủ công
     trang_thai_kho_chinh_tay: str = "tu_dong"
@@ -188,8 +189,8 @@ def them(data: SanPhamVao, _: dict = Depends(chi_quan_ly)):
     try:
         ma_sp = tao_ma_moi(conn, "sanpham", "ma_sp", "SP")
         conn.execute(
-            "INSERT INTO sanpham(ma_sp, ten_sp, loai, gia_ban, trang_thai, trang_thai_kho_chinh_tay, ghi_chu_kho, mo_ta) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (ma_sp, data.ten_sp, data.loai, data.gia_ban, data.trang_thai, data.trang_thai_kho_chinh_tay, data.ghi_chu_kho.strip(), data.mo_ta),
+            "INSERT INTO sanpham(ma_sp, ten_sp, loai, gia_ban, hinh_anh, trang_thai, trang_thai_kho_chinh_tay, ghi_chu_kho, mo_ta) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (ma_sp, data.ten_sp, data.loai, data.gia_ban, data.hinh_anh.strip(), data.trang_thai, data.trang_thai_kho_chinh_tay, data.ghi_chu_kho.strip(), data.mo_ta),
         )
         gan_cong_thuc(conn, ma_sp, data.cong_thuc)
         conn.commit()
@@ -206,8 +207,8 @@ def sua(ma_sp: str, data: SanPhamVao, _: dict = Depends(chi_quan_ly)):
         if not ton_tai:
             raise HTTPException(status_code=404, detail="Không tìm thấy sản phẩm")
         conn.execute(
-            "UPDATE sanpham SET ten_sp=?, loai=?, gia_ban=?, trang_thai=?, trang_thai_kho_chinh_tay=?, ghi_chu_kho=?, mo_ta=? WHERE ma_sp=?",
-            (data.ten_sp, data.loai, data.gia_ban, data.trang_thai, data.trang_thai_kho_chinh_tay, data.ghi_chu_kho.strip(), data.mo_ta, ma_sp),
+            "UPDATE sanpham SET ten_sp=?, loai=?, gia_ban=?, hinh_anh=?, trang_thai=?, trang_thai_kho_chinh_tay=?, ghi_chu_kho=?, mo_ta=? WHERE ma_sp=?",
+            (data.ten_sp, data.loai, data.gia_ban, data.hinh_anh.strip(), data.trang_thai, data.trang_thai_kho_chinh_tay, data.ghi_chu_kho.strip(), data.mo_ta, ma_sp),
         )
         gan_cong_thuc(conn, ma_sp, data.cong_thuc)
         conn.commit()
